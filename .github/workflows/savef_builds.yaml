@@ -1,0 +1,482 @@
+# On-demand test builds for this fork.
+#
+# Run it from the Actions tab: "Savef builds" -> "Run workflow", enter the branch (or tag/commit) to build
+# and tick the platforms you want. Nothing here runs on push or pull request.
+#
+# The build steps are copied from ci_windows.yaml and ci_macos.yaml with a reduced matrix
+# (libtorrent 2.0.x only, GUI only on macOS). Keep them in sync with those files when upstream changes them.
+
+name: Savef builds
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or commit to build"
+        required: true
+        type: string
+        default: "master"
+      windows:
+        description: "Windows x64 (portable + installer)"
+        type: boolean
+        default: true
+      macos:
+        description: "macOS app (Apple Silicon)"
+        type: boolean
+        default: true
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Resolve ref
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.info.outputs.sha }}
+      label: ${{ steps.info.outputs.label }}
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Resolve commit and artifact label
+        id: info
+        env:
+          INPUT_REF: ${{ inputs.ref }}
+          BUILD_WINDOWS: ${{ inputs.windows }}
+          BUILD_MACOS: ${{ inputs.macos }}
+        run: |
+          if [ "$BUILD_WINDOWS" != "true" ] && [ "$BUILD_MACOS" != "true" ]; then
+            echo "::error::No platform selected. Tick Windows and/or macOS."
+            exit 1
+          fi
+          sha="$(git rev-parse HEAD)"
+          short="$(git rev-parse --short=7 HEAD)"
+          # artifact names cannot contain characters such as '/'
+          safe_ref="$(printf '%s' "$INPUT_REF" | tr -c 'A-Za-z0-9._-' '-')"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "label=${safe_ref}_${short}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Building \`$INPUT_REF\` at \`$short\`"
+            echo ""
+            echo "- Windows: $BUILD_WINDOWS"
+            echo "- macOS: $BUILD_MACOS"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  windows:
+    name: Windows (${{ matrix.libtorrent.version }}, ${{ matrix.config.arch }})
+    needs: prepare
+    if: ${{ inputs.windows }}
+    runs-on: ${{ matrix.config.os }}
+    permissions:
+      actions: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        libtorrent:
+          - version: "2.0.15"
+            boost_major_version: "1"
+            boost_minor_version: "91"
+            boost_patch_version: "0"
+            boost_sha256: "5734305f40a76c30f951c9abd409a45a2a19fb546efe4162119250bbe4d3a463"
+            libt_build_flags: ""
+        config:
+        - os: windows-latest
+          arch: x64
+          qt_arch: win64_msvc2022_64
+
+    env:
+      artifact_name: "qBittorrent-Windows-${{ matrix.config.arch }}_${{ needs.prepare.outputs.label }}"
+      boost_path: "${{ github.workspace }}/../boost"
+      libtorrent_path: "${{ github.workspace }}/../libtorrent"
+      vcpkg_path: "c:/vcpkg"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+
+      - name: Setup devcmd
+        uses: TheMrMilchmann/setup-msvc-dev@v4
+        with:
+          arch: ${{ matrix.config.arch }}
+
+      - name: Install build tools
+        run: |
+          if ((Get-Command "ninja.exe" -ErrorAction SilentlyContinue) -eq $null)
+          {
+            choco install ninja
+          }
+          where.exe ninja
+          ninja --version
+
+      # https://learn.microsoft.com/en-us/vcpkg/users/binarycaching#gha
+      - name: Set variables for vcpkg
+        uses: actions/github-script@v9
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', (process.env.ACTIONS_CACHE_URL || ''));
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', (process.env.ACTIONS_RUNTIME_TOKEN || ''));
+
+      - name: Install dependencies with vcpkg
+        run: |
+          # create our own triplet
+          New-Item `
+            -Force `
+            -ItemType File `
+            -Path "${{ env.vcpkg_path }}/triplets_overlay/${{ matrix.config.arch }}-windows-static-md-release.cmake"
+          # OpenSSL isn't compatible with `/guard:cf` flag so we omit it for now, see: https://github.com/openssl/openssl/issues/22554
+          Add-Content `
+            -Path "${{ env.vcpkg_path }}/triplets_overlay/${{ matrix.config.arch }}-windows-static-md-release.cmake" `
+            -Value @("set(VCPKG_TARGET_ARCHITECTURE ${{ matrix.config.arch }})",
+              "set(VCPKG_LIBRARY_LINKAGE static)",
+              "set(VCPKG_CRT_LINKAGE dynamic)",
+              "set(VCPKG_BUILD_TYPE release)")
+          # clear buildtrees after each package installation to reduce disk space requirements
+          $packages = `
+            "boost-build:${{ matrix.config.arch }}-windows-static-md-release",
+            "openssl:${{ matrix.config.arch }}-windows-static-md-release",
+            "zlib:${{ matrix.config.arch }}-windows-static-md-release"
+          ${{ env.vcpkg_path }}/vcpkg.exe upgrade `
+            --no-dry-run `
+            --overlay-triplets="${{ env.vcpkg_path }}/triplets_overlay"
+          ${{ env.vcpkg_path }}/vcpkg.exe install `
+            --binarysource="clear;x-gha,readwrite" `
+            --clean-after-build `
+            --overlay-triplets="${{ env.vcpkg_path }}/triplets_overlay" `
+            $packages
+
+      - name: Install boost
+        run: |
+          $boost_url="https://archives.boost.io/release/${{ matrix.libtorrent.boost_major_version }}.${{ matrix.libtorrent.boost_minor_version }}.${{ matrix.libtorrent.boost_patch_version }}/source/boost_${{ matrix.libtorrent.boost_major_version }}_${{ matrix.libtorrent.boost_minor_version }}_${{ matrix.libtorrent.boost_patch_version }}.tar.gz"
+          $boost_url2="https://sourceforge.net/projects/boost/files/boost/${{ matrix.libtorrent.boost_major_version }}.${{ matrix.libtorrent.boost_minor_version }}.${{ matrix.libtorrent.boost_patch_version }}/boost_${{ matrix.libtorrent.boost_major_version }}_${{ matrix.libtorrent.boost_minor_version }}_${{ matrix.libtorrent.boost_patch_version }}.tar.gz"
+          curl -L -o "${{ runner.temp }}/boost.tar.gz" "$boost_url"
+          if ((Get-FileHash -Algorithm SHA256 "${{ runner.temp }}/boost.tar.gz" -ErrorAction SilentlyContinue).Hash -ne "${{ matrix.libtorrent.boost_sha256 }}")
+          {
+            curl -L -o "${{ runner.temp }}/boost.tar.gz" "$boost_url2"
+            if ((Get-FileHash -Algorithm SHA256 "${{ runner.temp }}/boost.tar.gz").Hash -ne "${{ matrix.libtorrent.boost_sha256 }}")
+            {
+              throw "boost.tar.gz does not match its expected SHA-256"
+            }
+          }
+          tar -xf "${{ runner.temp }}/boost.tar.gz" -C "${{ github.workspace }}/.."
+          move "${{ github.workspace }}/../boost_*" "${{ env.boost_path }}"
+          cd "${{ env.boost_path }}"
+          #.\bootstrap.bat
+          ${{ env.vcpkg_path }}/installed/${{ matrix.config.arch }}-windows-static-md-release/tools/boost-build/b2.exe `
+            stage `
+            toolset=msvc `
+            --stagedir=.\ `
+            --with-headers
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.10.3"
+          arch: ${{ matrix.config.qt_arch }}
+          archives: qtbase qtsvg qttools
+          modules: qtimageformats
+          cache: true
+
+      - name: Install libtorrent
+        run: |
+          git clone `
+            --branch v${{ matrix.libtorrent.version }} `
+            --depth 1 `
+            --recurse-submodules `
+            https://github.com/arvidn/libtorrent.git `
+            ${{ env.libtorrent_path }}
+          cd ${{ env.libtorrent_path }}
+          $env:CFLAGS+=" /guard:cf"
+          $env:CXXFLAGS+=" /guard:cf"
+          $env:LDFLAGS+=" /GUARD:CF"
+          cmake `
+            -B build `
+            -G "Ninja" `
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo `
+            -DCMAKE_CXX_STANDARD=20 `
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON `
+            -DCMAKE_INSTALL_PREFIX="${{ env.libtorrent_path }}/install" `
+            -DCMAKE_TOOLCHAIN_FILE="${{ env.vcpkg_path }}/scripts/buildsystems/vcpkg.cmake" `
+            -DBOOST_ROOT="${{ env.boost_path }}/lib/cmake" `
+            -DBUILD_SHARED_LIBS=OFF `
+            -Ddeprecated-functions=OFF `
+            -Dstatic_runtime=OFF `
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.config.arch }}-windows-static-md-release `
+            ${{ matrix.libtorrent.libt_build_flags }}
+          cmake --build build
+          cmake --install build
+
+      - name: Build qBittorrent
+        run: |
+          $env:CXXFLAGS+="/DQT_FORCE_ASSERTS /WX"
+          cmake `
+            -B build `
+            -G "Ninja" `
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo `
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON `
+            -DCMAKE_TOOLCHAIN_FILE="${{ env.vcpkg_path }}/scripts/buildsystems/vcpkg.cmake" `
+            -DBOOST_ROOT="${{ env.boost_path }}/lib/cmake" `
+            -DLibtorrentRasterbar_DIR="${{ env.libtorrent_path }}/install/lib/cmake/LibtorrentRasterbar" `
+            -DMSVC_RUNTIME_DYNAMIC=ON `
+            -DTESTING=ON `
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.config.arch }}-windows-static-md-release `
+            -DVERBOSE_CONFIGURE=ON `
+            --graphviz=build/target_graph.dot
+          cmake --build build --target qbt_update_translations
+          cmake --build build
+          cmake --build build --target check
+
+      - name: Prepare build artifacts
+        run: |
+          mkdir upload
+          mkdir upload/qBittorrent
+          # binaries
+          copy build/qbittorrent.exe upload/qBittorrent
+          copy build/qbittorrent.pdb upload/qBittorrent
+          copy dist/windows/qt.conf upload/qBittorrent
+          # runtimes
+          copy "${{ env.Qt_ROOT_DIR }}/bin/Qt6Core.dll" upload/qBittorrent
+          copy "${{ env.Qt_ROOT_DIR }}/bin/Qt6Gui.dll" upload/qBittorrent
+          copy "${{ env.Qt_ROOT_DIR }}/bin/Qt6Network.dll" upload/qBittorrent
+          copy "${{ env.Qt_ROOT_DIR }}/bin/Qt6Sql.dll" upload/qBittorrent
+          copy "${{ env.Qt_ROOT_DIR }}/bin/Qt6Svg.dll" upload/qBittorrent
+          copy "${{ env.Qt_ROOT_DIR }}/bin/Qt6Widgets.dll" upload/qBittorrent
+          copy "${{ env.Qt_ROOT_DIR }}/bin/Qt6Xml.dll" upload/qBittorrent
+          mkdir upload/qBittorrent/plugins/iconengines
+          copy "${{ env.Qt_ROOT_DIR }}/plugins/iconengines/qsvgicon.dll" upload/qBittorrent/plugins/iconengines
+          mkdir upload/qBittorrent/plugins/imageformats
+          # include all imageformats dlls since CI (dev) build links dynamically
+          copy "${{ env.Qt_ROOT_DIR }}/plugins/imageformats/qgif.dll" upload/qBittorrent/plugins/imageformats
+          copy "${{ env.Qt_ROOT_DIR }}/plugins/imageformats/qicns.dll" upload/qBittorrent/plugins/imageformats
+          copy "${{ env.Qt_ROOT_DIR }}/plugins/imageformats/qico.dll" upload/qBittorrent/plugins/imageformats
+          copy "${{ env.Qt_ROOT_DIR }}/plugins/imageformats/qjpeg.dll" upload/qBittorrent/plugins/imageformats
+          copy "${{ env.Qt_ROOT_DIR }}/plugins/imageformats/qsvg.dll" upload/qBittorrent/plugins/imageformats
+          copy "${{ env.Qt_ROOT_DIR }}/plugins/imageformats/qtga.dll" upload/qBittorrent/plugins/imageformats
+          copy "${{ env.Qt_ROOT_DIR }}/plugins/imageformats/qtiff.dll" upload/qBittorrent/plugins/imageformats
+          copy "${{ env.Qt_ROOT_DIR }}/plugins/imageformats/qwbmp.dll" upload/qBittorrent/plugins/imageformats
+          copy "${{ env.Qt_ROOT_DIR }}/plugins/imageformats/qwebp.dll" upload/qBittorrent/plugins/imageformats
+          mkdir upload/qBittorrent/plugins/platforms
+          copy "${{ env.Qt_ROOT_DIR }}/plugins/platforms/qwindows.dll" upload/qBittorrent/plugins/platforms
+          mkdir upload/qBittorrent/plugins/sqldrivers
+          copy "${{ env.Qt_ROOT_DIR }}/plugins/sqldrivers/qsqlite.dll" upload/qBittorrent/plugins/sqldrivers
+          mkdir upload/qBittorrent/plugins/styles
+          copy "${{ env.Qt_ROOT_DIR }}/plugins/styles/qmodernwindowsstyle.dll" upload/qBittorrent/plugins/styles
+          mkdir upload/qBittorrent/plugins/tls
+          copy "${{ env.Qt_ROOT_DIR }}/plugins/tls/qschannelbackend.dll" upload/qBittorrent/plugins/tls
+          # portable mode: settings and data stay in this folder instead of %APPDATA% / %LOCALAPPDATA%
+          # (a file is needed because artifact uploads skip empty folders)
+          mkdir upload/qBittorrent/profile
+          Set-Content `
+            -Path upload/qBittorrent/profile/README.txt `
+            -Value "This folder enables portable mode: qBittorrent keeps all its settings and data here instead of in AppData. Do not remove it."
+
+      - name: Upload portable build
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.artifact_name }}_portable
+          path: upload
+
+      - name: Install NSIS
+        uses: repolevedavaj/install-nsis@65a75ea79c3d1ddde868e98b7f9447e2e623401c # v1.3.0
+        with:
+          nsis-version: '3.12'
+
+      - name: Create installer
+        run: |
+          # the installer must not ship the portable-mode profile folder
+          Remove-Item -Recurse -Force upload/qBittorrent/profile
+          7z x -o"dist/windows/" "dist/windows/NSISPlugins.zip"
+          makensis `
+            /DQBT_CPU_ARCH="${{ matrix.config.arch }}" `
+            /DQBT_DIST_DIR="../../upload/qBittorrent" `
+            /WX `
+            dist/windows/qbittorrent.nsi
+          move "dist/windows/qbittorrent_*_setup.exe" "${{ env.artifact_name }}-setup.exe"
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v7
+        with:
+          archive: false
+          path: ${{ env.artifact_name }}-setup.exe
+
+  macos:
+    name: macOS (${{ matrix.libtorrent.version }}, ${{ matrix.qbt_gui }})
+    needs: prepare
+    if: ${{ inputs.macos }}
+    runs-on: macos-latest
+    permissions:
+      actions: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        libtorrent:
+          - version: "2.0.15"
+            boost_major_version: "1"
+            boost_minor_version: "91"
+            boost_patch_version: "0"
+            boost_sha256: "5734305f40a76c30f951c9abd409a45a2a19fb546efe4162119250bbe4d3a463"
+            libt_build_flags: ""
+        qbt_gui: ["GUI=ON"]
+        qt_version: ["6.10.3"]
+
+    env:
+      artifact_name: "qBittorrent-macOS_${{ needs.prepare.outputs.label }}"
+      boost_path: "${{ github.workspace }}/../boost"
+      libtorrent_path: "${{ github.workspace }}/../libtorrent"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+
+      - name: Install dependencies
+        uses: nick-fields/retry@v4
+        env:
+          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
+        with:
+          timeout_seconds: 90
+          retry_wait_seconds: 20
+          max_attempts: 6
+          command: |
+            brew update > /dev/null
+            # already preinstalled on the image: cmake ninja
+            brew install \
+              openssl@3 zlib
+            echo "CMAKE_PREFIX_PATH=/opt/homebrew/opt/openssl@3" >> "$GITHUB_ENV"
+
+      - name: Setup ccache
+        uses: Chocobo1/setup-ccache-action@v1
+        with:
+          store_cache: true
+          update_packager_index: false
+          ccache_options: |
+            max_size=1G
+
+      - name: Install boost
+        run: |
+          boost_url="https://archives.boost.io/release/${{ matrix.libtorrent.boost_major_version }}.${{ matrix.libtorrent.boost_minor_version }}.${{ matrix.libtorrent.boost_patch_version }}/source/boost_${{ matrix.libtorrent.boost_major_version }}_${{ matrix.libtorrent.boost_minor_version }}_${{ matrix.libtorrent.boost_patch_version }}.tar.gz"
+          boost_url2="https://sourceforge.net/projects/boost/files/boost/${{ matrix.libtorrent.boost_major_version }}.${{ matrix.libtorrent.boost_minor_version }}.${{ matrix.libtorrent.boost_patch_version }}/boost_${{ matrix.libtorrent.boost_major_version }}_${{ matrix.libtorrent.boost_minor_version }}_${{ matrix.libtorrent.boost_patch_version }}.tar.gz"
+          boost_checksum="${{ matrix.libtorrent.boost_sha256 }}  ${{ runner.temp }}/boost.tar.gz"
+          set +e
+          curl -L -o "${{ runner.temp }}/boost.tar.gz" "$boost_url"
+          echo "$boost_checksum" | shasum -a 256 -c - && \
+            tar -xf "${{ runner.temp }}/boost.tar.gz" -C "${{ github.workspace }}/.."; _exitCode="$?"
+          if [ "$_exitCode" -ne "0" ]; then
+            curl -L -o "${{ runner.temp }}/boost.tar.gz" "$boost_url2"
+            echo "$boost_checksum" | shasum -a 256 -c - && \
+              tar -xf "${{ runner.temp }}/boost.tar.gz" -C "${{ github.workspace }}/.."; _exitCode="$?"
+          fi
+          if [ "$_exitCode" -ne "0" ]; then
+            exit "$_exitCode"
+          fi
+          mv "${{ github.workspace }}/.."/boost_* "${{ env.boost_path }}"
+          cd "${{ env.boost_path }}"
+          ./bootstrap.sh
+          ./b2 stage --stagedir=./ --with-headers
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ matrix.qt_version }}
+          archives: qtbase qtdeclarative qtsvg qttools
+          modules: qtimageformats
+          # Not sure why Qt made a hard dependency on qtdeclarative, try removing it when Qt > 6.4.0
+          cache: true
+
+      - name: Install libtorrent
+        run: |
+          git clone \
+            --branch v${{ matrix.libtorrent.version }} \
+            --depth 1 \
+            --recurse-submodules \
+            https://github.com/arvidn/libtorrent.git \
+            ${{ env.libtorrent_path }}
+          cd ${{ env.libtorrent_path }}
+          cmake \
+            -B build \
+            -G "Ninja" \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_CXX_STANDARD=20 \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DBOOST_ROOT="${{ env.boost_path }}/lib/cmake" \
+            -Ddeprecated-functions=OFF \
+            ${{ matrix.libtorrent.libt_build_flags }}
+          cmake --build build
+          sudo cmake --install build
+
+      - name: Build qBittorrent
+        run: |
+          CXXFLAGS="$CXXFLAGS -DQT_FORCE_ASSERTS -Werror -Wno-error=deprecated-declarations -Wno-error=deprecated-literal-operator" \
+          LDFLAGS="$LDFLAGS -gz" \
+          cmake \
+            -B build \
+            -G "Ninja" \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DBOOST_ROOT="${{ env.boost_path }}/lib/cmake" \
+            -DTESTING=ON \
+            -DVERBOSE_CONFIGURE=ON \
+            -D${{ matrix.qbt_gui }}
+          cmake --build build --target qbt_update_translations
+          cmake --build build
+          cmake --build build --target check
+          if [ "${{ matrix.qbt_gui }}" = "GUI=ON" ]; then
+            build/qbittorrent.app/Contents/MacOS/qbittorrent -v
+          else
+            build/qbittorrent-nox.app/Contents/MacOS/qbittorrent-nox -v
+          fi
+
+      - name: Prepare build artifacts
+        run: |
+          appName="qbittorrent"
+          if [ "${{ matrix.qbt_gui }}" = "GUI=OFF" ]; then
+            appName="qbittorrent-nox"
+          fi
+          pushd build
+          # packaging
+          macdeployqt "$appName.app" -no-strip
+          # code signing
+          xattr -cr "$appName.app"
+          codesign --force --sign - \
+            "$appName.app" \
+            "$appName.app/Contents/Frameworks"/* \
+            "$appName.app/Contents/MacOS/$appName"
+          codesign --verify --deep --strict -v "$appName.app"
+          # create .dmg
+          PACKAGE_RETRY=0
+          while [ "$PACKAGE_RETRY" -lt "3" ]; do
+            if hdiutil create -fs HFS+ -srcfolder "$appName.app" -volname "$appName" "$appName.dmg"; then
+              break
+            fi
+            sleep 5
+            PACKAGE_RETRY=$((PACKAGE_RETRY + 1))
+            echo "Retry $PACKAGE_RETRY..."
+          done
+          popd
+          # prepare upload file
+          mkdir upload
+          cp "build/$appName.dmg" "upload/${{ env.artifact_name }}.dmg"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          archive: false
+          path: upload/${{ env.artifact_name }}.dmg
