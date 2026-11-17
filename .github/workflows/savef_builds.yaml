@@ -18,7 +18,7 @@ on:
         type: string
         default: "master"
       windows:
-        description: "Windows x64 (portable + installer)"
+        description: "Windows x64 (portable)"
         type: boolean
         default: true
       macos:
@@ -287,29 +287,6 @@ jobs:
           name: ${{ env.artifact_name }}_portable
           path: upload
           include-hidden-files: true
-
-      - name: Install NSIS
-        uses: repolevedavaj/install-nsis@65a75ea79c3d1ddde868e98b7f9447e2e623401c # v1.3.0
-        with:
-          nsis-version: '3.12'
-
-      - name: Create installer
-        run: |
-          # the installer must not ship the portable-mode profile folder
-          Remove-Item -Recurse -Force upload/qBittorrent/profile
-          7z x -o"dist/windows/" "dist/windows/NSISPlugins.zip"
-          makensis `
-            /DQBT_CPU_ARCH="${{ matrix.config.arch }}" `
-            /DQBT_DIST_DIR="../../upload/qBittorrent" `
-            /WX `
-            dist/windows/qbittorrent.nsi
-          move "dist/windows/qbittorrent_*_setup.exe" "${{ env.artifact_name }}-setup.exe"
-
-      - name: Upload installer
-        uses: actions/upload-artifact@v7
-        with:
-          archive: false
-          path: ${{ env.artifact_name }}-setup.exe
 
   macos:
     name: macOS (${{ matrix.libtorrent.version }}, ${{ matrix.qbt_gui }})
