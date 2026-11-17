@@ -117,6 +117,8 @@ public:
     void setStatusbarExternalIPDisplayed(bool displayed);
     bool isStatusbarSelectedTorrentsCountDisplayed() const;
     void setStatusbarSelectedTorrentsCountDisplayed(bool displayed);
+    bool isStatusbarSelectedTorrentsSizeDisplayed() const;
+    void setStatusbarSelectedTorrentsSizeDisplayed(bool displayed);
     bool isToolbarDisplayed() const;
     void setToolbarDisplayed(bool displayed);
     bool isTorrentContentDragEnabled() const;

@@ -62,6 +62,7 @@ public:
     ~TransferListWidget() override;
     TransferListModel *getSourceModel() const;
     qsizetype selectedTorrentsCount() const;
+    qint64 selectedTorrentsSize() const;
 
 public slots:
     void setSelectionCategory(const QString &category);

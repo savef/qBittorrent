@@ -19,6 +19,8 @@
 * [#XXXXX](https://github.com/qbittorrent/qBittorrent/pull/XXXXX)
   * `app/preferences` endpoint includes `status_bar_selected_torrents_count` (bool) option
   * `app/setPreferences` endpoint allows to set `status_bar_selected_torrents_count` (bool) option
+  * `app/preferences` endpoint includes `status_bar_selected_torrents_size` (bool) option
+  * `app/setPreferences` endpoint allows to set `status_bar_selected_torrents_size` (bool) option
 
 ## 2.16.2
 

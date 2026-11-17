@@ -388,6 +388,7 @@ void OptionsDialog::loadBehaviorTabOptions()
     m_ui->checkFileLog->setChecked(app()->isFileLoggerEnabled());
 
     m_ui->checkBoxSelectedTorrentsCountStatusBar->setChecked(pref->isStatusbarSelectedTorrentsCountDisplayed());
+    m_ui->checkBoxSelectedTorrentsSizeStatusBar->setChecked(pref->isStatusbarSelectedTorrentsSizeDisplayed());
     m_ui->checkBoxFreeDiskSpaceStatusBar->setChecked(pref->isStatusbarFreeDiskSpaceDisplayed());
     m_ui->checkBoxExternalIPStatusBar->setChecked(pref->isStatusbarExternalIPDisplayed());
     m_ui->checkBoxPerformanceWarning->setChecked(session->isPerformanceWarningEnabled());
@@ -475,7 +476,8 @@ void OptionsDialog::loadBehaviorTabOptions()
     connect(m_ui->spinFileLogAge, qSpinBoxValueChanged, this, &ThisType::enableApplyButton);
     connect(m_ui->comboFileLogAgeType, qComboBoxCurrentIndexChanged, this, &ThisType::enableApplyButton);
 
-    connect(m_ui->checkBoxSelectedTorrentsCountStatusBar, &QAbstractButton::toggled, this, &ThisType::enableApplyButton);
+    connect(m_ui->checkBoxSelectedTorrentsCountStatusBar, &QGroupBox::toggled, this, &ThisType::enableApplyButton);
+    connect(m_ui->checkBoxSelectedTorrentsSizeStatusBar, &QAbstractButton::toggled, this, &ThisType::enableApplyButton);
     connect(m_ui->checkBoxFreeDiskSpaceStatusBar, &QAbstractButton::toggled, this, &ThisType::enableApplyButton);
     connect(m_ui->checkBoxExternalIPStatusBar, &QAbstractButton::toggled, this, &ThisType::enableApplyButton);
     connect(m_ui->checkBoxPerformanceWarning, &QAbstractButton::toggled, this, &ThisType::enableApplyButton);
@@ -568,6 +570,7 @@ void OptionsDialog::saveBehaviorTabOptions() const
     app()->setStartUpWindowState(m_ui->windowStateComboBox->currentData().value<WindowState>());
 
     pref->setStatusbarSelectedTorrentsCountDisplayed(m_ui->checkBoxSelectedTorrentsCountStatusBar->isChecked());
+    pref->setStatusbarSelectedTorrentsSizeDisplayed(m_ui->checkBoxSelectedTorrentsSizeStatusBar->isChecked());
     pref->setStatusbarFreeDiskSpaceDisplayed(m_ui->checkBoxFreeDiskSpaceStatusBar->isChecked());
     pref->setStatusbarExternalIPDisplayed(m_ui->checkBoxExternalIPStatusBar->isChecked());
     session->setPerformanceWarningEnabled(m_ui->checkBoxPerformanceWarning->isChecked());

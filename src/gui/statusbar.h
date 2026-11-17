@@ -52,7 +52,7 @@ signals:
 
 public slots:
     void showRestartRequired();
-    void setSelectedTorrentsCount(qsizetype count);
+    void setSelectedTorrents(qsizetype count, qint64 size);
 
 private slots:
     void refresh();
@@ -84,4 +84,5 @@ private:
     QPushButton *m_altSpeedsBtn = nullptr;
 
     qsizetype m_selectedTorrentsCount = 0;
+    qint64 m_selectedTorrentsSize = 0;
 };

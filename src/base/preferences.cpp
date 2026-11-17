@@ -450,6 +450,19 @@ void Preferences::setStatusbarSelectedTorrentsCountDisplayed(const bool displaye
     setValue(u"Preferences/General/StatusbarSelectedTorrentsCountDisplayed"_s, displayed);
 }
 
+bool Preferences::isStatusbarSelectedTorrentsSizeDisplayed() const
+{
+    return value(u"Preferences/General/StatusbarSelectedTorrentsSizeDisplayed"_s, false);
+}
+
+void Preferences::setStatusbarSelectedTorrentsSizeDisplayed(const bool displayed)
+{
+    if (displayed == isStatusbarSelectedTorrentsSizeDisplayed())
+        return;
+
+    setValue(u"Preferences/General/StatusbarSelectedTorrentsSizeDisplayed"_s, displayed);
+}
+
 bool Preferences::isSplashScreenDisabled() const
 {
     return value(u"Preferences/General/NoSplashScreen"_s, true);

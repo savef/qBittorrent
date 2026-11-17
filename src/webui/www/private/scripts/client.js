@@ -369,10 +369,22 @@ const updateSelectedTorrentsStatus = () => {
     if (element === null)
         return;
 
-    const selectedCount = torrentsTable.selectedRowsIds().length;
-    const isVisible = (window.qBittorrent.Cache.preferences.get().status_bar_selected_torrents_count === true) && (selectedCount > 0);
-    if (isVisible)
-        element.textContent = "QBT_TR(Selected: %1)QBT_TR[CONTEXT=StatusBar]".replace("%1", selectedCount);
+    const preferences = window.qBittorrent.Cache.preferences.get();
+    const selectedRowIds = torrentsTable.selectedRowsIds();
+    const isVisible = (preferences.status_bar_selected_torrents_count === true) && (selectedRowIds.length > 0);
+    if (isVisible) {
+        if (preferences.status_bar_selected_torrents_size === true) {
+            let selectedSize = 0;
+            for (const rowId of selectedRowIds)
+                selectedSize += torrentsTable.getRow(rowId)?.full_data.size ?? 0;
+            element.textContent = "QBT_TR(Selected: %1 (%2))QBT_TR[CONTEXT=StatusBar]"
+                .replace("%1", selectedRowIds.length)
+                .replace("%2", window.qBittorrent.Misc.friendlyUnit(selectedSize));
+        }
+        else {
+            element.textContent = "QBT_TR(Selected: %1)QBT_TR[CONTEXT=StatusBar]".replace("%1", selectedRowIds.length);
+        }
+    }
     element.classList.toggle("invisible", !isVisible);
     element.nextElementSibling.classList.toggle("invisible", !isVisible);
 };

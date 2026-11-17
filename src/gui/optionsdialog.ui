@@ -495,10 +495,22 @@
               </property>
               <layout class="QVBoxLayout" name="statusBarGroupLayout">
                <item>
-                <widget class="QCheckBox" name="checkBoxSelectedTorrentsCountStatusBar">
-                 <property name="text">
+                <widget class="QGroupBox" name="checkBoxSelectedTorrentsCountStatusBar">
+                 <property name="title">
                   <string>Show selected torrents count</string>
                  </property>
+                 <property name="checkable">
+                  <bool>true</bool>
+                 </property>
+                 <layout class="QVBoxLayout" name="selectedTorrentsCountStatusBarLayout">
+                  <item>
+                   <widget class="QCheckBox" name="checkBoxSelectedTorrentsSizeStatusBar">
+                    <property name="text">
+                     <string>Include total size of selected torrents</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
                 </widget>
                </item>
                <item>

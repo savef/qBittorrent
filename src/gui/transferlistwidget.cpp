@@ -321,6 +321,14 @@ qsizetype TransferListWidget::selectedTorrentsCount() const
     return selectionModel()->selectedRows().size();
 }
 
+qint64 TransferListWidget::selectedTorrentsSize() const
+{
+    qint64 size = 0;
+    for (const BitTorrent::Torrent *torrent : asConst(getSelectedTorrents()))
+        size += torrent->wantedSize();
+    return size;
+}
+
 QList<BitTorrent::Torrent *> TransferListWidget::getSelectedTorrents() const
 {
     const QModelIndexList selectedRows = selectionModel()->selectedRows();

@@ -1397,11 +1397,13 @@ void MainWindow::showStatusBar(bool show)
         m_statusBar = new StatusBar;
         connect(m_statusBar.data(), &StatusBar::connectionButtonClicked, this, &MainWindow::showConnectionSettings);
         connect(m_statusBar.data(), &StatusBar::alternativeSpeedsButtonClicked, this, &MainWindow::toggleAlternativeSpeeds);
-        connect(m_transferListWidget, &TransferListWidget::selectedTorrentsChanged, m_statusBar.data(), [this]
+        const auto updateSelectedTorrents = [this]
         {
-            m_statusBar->setSelectedTorrentsCount(m_transferListWidget->selectedTorrentsCount());
-        });
-        m_statusBar->setSelectedTorrentsCount(m_transferListWidget->selectedTorrentsCount());
+            m_statusBar->setSelectedTorrents(m_transferListWidget->selectedTorrentsCount(), m_transferListWidget->selectedTorrentsSize());
+        };
+        connect(m_transferListWidget, &TransferListWidget::selectedTorrentsChanged, m_statusBar.data(), updateSelectedTorrents);
+        connect(BitTorrent::Session::instance(), &BitTorrent::Session::torrentsUpdated, m_statusBar.data(), updateSelectedTorrents);
+        updateSelectedTorrents();
         setStatusBar(m_statusBar);
     }
 }

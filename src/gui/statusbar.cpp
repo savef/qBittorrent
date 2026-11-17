@@ -174,12 +174,13 @@ void StatusBar::showRestartRequired()
     insertWidget(1, restartLbl);
 }
 
-void StatusBar::setSelectedTorrentsCount(const qsizetype count)
+void StatusBar::setSelectedTorrents(const qsizetype count, const qint64 size)
 {
-    if (count == m_selectedTorrentsCount)
+    if ((count == m_selectedTorrentsCount) && (size == m_selectedTorrentsSize))
         return;
 
     m_selectedTorrentsCount = count;
+    m_selectedTorrentsSize = size;
     updateSelectedTorrentsLabel();
 }
 
@@ -264,12 +265,22 @@ void StatusBar::updateExternalAddressesVisibility()
 
 void StatusBar::updateSelectedTorrentsLabel()
 {
-    const bool isVisible = Preferences::instance()->isStatusbarSelectedTorrentsCountDisplayed()
-        && (m_selectedTorrentsCount > 0);
+    const auto *pref = Preferences::instance();
+    const bool isVisible = pref->isStatusbarSelectedTorrentsCountDisplayed() && (m_selectedTorrentsCount > 0);
     m_selectedTorrentsLbl->setVisible(isVisible);
     m_selectedTorrentsSeparator->setVisible(isVisible);
-    if (isVisible)
+    if (!isVisible)
+        return;
+
+    if (pref->isStatusbarSelectedTorrentsSizeDisplayed())
+    {
+        m_selectedTorrentsLbl->setText(tr("Selected: %1 (%2)", "Number and total size of selected torrents, e.g. Selected: 12 (24.68 GiB)")
+            .arg(QString::number(m_selectedTorrentsCount), Utils::Misc::friendlyUnit(m_selectedTorrentsSize)));
+    }
+    else
+    {
         m_selectedTorrentsLbl->setText(tr("Selected: %1", "Number of selected torrents, e.g. Selected: 12").arg(m_selectedTorrentsCount));
+    }
 }
 
 void StatusBar::updateSpeedLabels()
