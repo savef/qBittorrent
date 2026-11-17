@@ -93,6 +93,10 @@ StatusBar::StatusBar(QWidget *parent)
     m_upSpeedLbl = createSpeedButton(UIThemeManager::instance()->getIcon(u"upload"_s, u"seeding"_s), this);
     connect(m_upSpeedLbl, &QAbstractButton::clicked, this, &StatusBar::capSpeed);
 
+    m_selectedTorrentsLbl = new QLabel(this);
+    m_selectedTorrentsLbl->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
+    m_selectedTorrentsSeparator = createSeparator(this);
+
     m_freeDiskSpaceLbl = new QLabel(tr("Free space: N/A"));
     m_freeDiskSpaceLbl->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
     m_freeDiskSpaceSeparator = createSeparator(this);
@@ -125,6 +129,8 @@ StatusBar::StatusBar(QWidget *parent)
     m_upSpeedLbl->setIconSize(smallIconSize);
     m_altSpeedsBtn->setIconSize({midIconSize.width(), smallIconSize.height()});
 
+    addPermanentWidget(m_selectedTorrentsLbl);
+    addPermanentWidget(m_selectedTorrentsSeparator);
     addPermanentWidget(m_freeDiskSpaceLbl);
     addPermanentWidget(m_freeDiskSpaceSeparator);
     addPermanentWidget(m_lastExternalIPsLbl);
@@ -140,6 +146,7 @@ StatusBar::StatusBar(QWidget *parent)
     addPermanentWidget(m_upSpeedLbl);
 
     updateExternalAddressesVisibility();
+    updateSelectedTorrentsLabel();
 
     refresh();
     connect(session, &BitTorrent::Session::statsUpdated, this, &StatusBar::refresh);
@@ -165,6 +172,15 @@ void StatusBar::showRestartRequired()
     auto *restartLbl = new QLabel(this);
     restartLbl->setText(restartText);
     insertWidget(1, restartLbl);
+}
+
+void StatusBar::setSelectedTorrentsCount(const qsizetype count)
+{
+    if (count == m_selectedTorrentsCount)
+        return;
+
+    m_selectedTorrentsCount = count;
+    updateSelectedTorrentsLabel();
 }
 
 void StatusBar::updateConnectionStatus()
@@ -246,6 +262,16 @@ void StatusBar::updateExternalAddressesVisibility()
     m_lastExternalIPsSeparator->setVisible(isVisible);
 }
 
+void StatusBar::updateSelectedTorrentsLabel()
+{
+    const bool isVisible = Preferences::instance()->isStatusbarSelectedTorrentsCountDisplayed()
+        && (m_selectedTorrentsCount > 0);
+    m_selectedTorrentsLbl->setVisible(isVisible);
+    m_selectedTorrentsSeparator->setVisible(isVisible);
+    if (isVisible)
+        m_selectedTorrentsLbl->setText(tr("Selected: %1", "Number of selected torrents, e.g. Selected: 12").arg(m_selectedTorrentsCount));
+}
+
 void StatusBar::updateSpeedLabels()
 {
     const BitTorrent::SessionStatus &sessionStatus = BitTorrent::Session::instance()->status();
@@ -301,4 +327,5 @@ void StatusBar::optionsSaved()
 {
     updateFreeDiskSpaceVisibility();
     updateExternalAddressesVisibility();
+    updateSelectedTorrentsLabel();
 }

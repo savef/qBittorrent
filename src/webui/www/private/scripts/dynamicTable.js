@@ -1887,6 +1887,16 @@ window.qBittorrent.DynamicTable ??= (() => {
             updatePropertiesPanel();
         }
 
+        setRowClass() {
+            super.setRowClass();
+            updateSelectedTorrentsStatus();
+        }
+
+        updateTable(fullUpdate = false) {
+            super.updateTable(fullUpdate);
+            updateSelectedTorrentsStatus();
+        }
+
         isStopped(hash) {
             const row = this.getRow(hash);
             return (row === undefined) ? true : row.full_data.state.includes("stopped");

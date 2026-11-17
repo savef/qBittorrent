@@ -1397,6 +1397,11 @@ void MainWindow::showStatusBar(bool show)
         m_statusBar = new StatusBar;
         connect(m_statusBar.data(), &StatusBar::connectionButtonClicked, this, &MainWindow::showConnectionSettings);
         connect(m_statusBar.data(), &StatusBar::alternativeSpeedsButtonClicked, this, &MainWindow::toggleAlternativeSpeeds);
+        connect(m_transferListWidget, &TransferListWidget::selectedTorrentsChanged, m_statusBar.data(), [this]
+        {
+            m_statusBar->setSelectedTorrentsCount(m_transferListWidget->selectedTorrentsCount());
+        });
+        m_statusBar->setSelectedTorrentsCount(m_transferListWidget->selectedTorrentsCount());
         setStatusBar(m_statusBar);
     }
 }

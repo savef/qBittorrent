@@ -61,6 +61,7 @@ public:
     TransferListWidget(IGUIApplication *app, QWidget *parent);
     ~TransferListWidget() override;
     TransferListModel *getSourceModel() const;
+    qsizetype selectedTorrentsCount() const;
 
 public slots:
     void setSelectionCategory(const QString &category);
@@ -108,12 +109,14 @@ public slots:
 
 signals:
     void currentTorrentChanged(BitTorrent::Torrent *torrent);
+    void selectedTorrentsChanged();
 
 private slots:
     void torrentDoubleClicked();
     void displayListMenu();
     void displayColumnHeaderMenu();
     void currentChanged(const QModelIndex &current, const QModelIndex &previous) override;
+    void selectionChanged(const QItemSelection &selected, const QItemSelection &deselected) override;
     void setSelectedTorrentsSuperSeeding(bool enabled) const;
     void setSelectedTorrentsSequentialDownload(bool enabled) const;
     void setSelectedFirstLastPiecePrio(bool enabled) const;

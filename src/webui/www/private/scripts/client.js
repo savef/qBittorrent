@@ -364,6 +364,19 @@ this.torrentsTable = new window.qBittorrent.DynamicTable.TorrentsTable();
 
 let updatePropertiesPanel = () => {};
 
+const updateSelectedTorrentsStatus = () => {
+    const element = document.getElementById("selectedTorrents");
+    if (element === null)
+        return;
+
+    const selectedCount = torrentsTable.selectedRowsIds().length;
+    const isVisible = (window.qBittorrent.Cache.preferences.get().status_bar_selected_torrents_count === true) && (selectedCount > 0);
+    if (isVisible)
+        element.textContent = "QBT_TR(Selected: %1)QBT_TR[CONTEXT=StatusBar]".replace("%1", selectedCount);
+    element.classList.toggle("invisible", !isVisible);
+    element.nextElementSibling.classList.toggle("invisible", !isVisible);
+};
+
 this.updateMainData = () => {};
 let alternativeSpeedLimits = false;
 let queueing_enabled = true;
@@ -1265,6 +1278,8 @@ window.addEventListener("DOMContentLoaded", async (event) => {
         }
 
         document.title = titlePrefix + window.qBittorrent.Client.mainTitle();
+
+        updateSelectedTorrentsStatus();
 
         document.getElementById("freeSpaceOnDisk").textContent = "QBT_TR(Free space: %1)QBT_TR[CONTEXT=HttpServer]".replace("%1", window.qBittorrent.Misc.friendlyUnit(serverState.free_space_on_disk));
 

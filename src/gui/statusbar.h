@@ -52,6 +52,7 @@ signals:
 
 public slots:
     void showRestartRequired();
+    void setSelectedTorrentsCount(qsizetype count);
 
 private slots:
     void refresh();
@@ -66,10 +67,13 @@ private:
     void updateFreeDiskSpaceVisibility();
     void updateExternalAddressesLabel();
     void updateExternalAddressesVisibility();
+    void updateSelectedTorrentsLabel();
     void updateSpeedLabels();
 
     QPushButton *m_dlSpeedLbl = nullptr;
     QPushButton *m_upSpeedLbl = nullptr;
+    QLabel *m_selectedTorrentsLbl = nullptr;
+    QWidget *m_selectedTorrentsSeparator = nullptr;
     QLabel *m_freeDiskSpaceLbl = nullptr;
     QWidget *m_freeDiskSpaceSeparator = nullptr;
     QLabel *m_lastExternalIPsLbl = nullptr;
@@ -78,4 +82,6 @@ private:
     QWidget *m_DHTSeparator = nullptr;
     QPushButton *m_connecStatusLblIcon = nullptr;
     QPushButton *m_altSpeedsBtn = nullptr;
+
+    qsizetype m_selectedTorrentsCount = 0;
 };

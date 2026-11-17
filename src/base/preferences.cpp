@@ -437,6 +437,19 @@ void Preferences::setStatusbarExternalIPDisplayed(const bool displayed)
     setValue(u"Preferences/General/StatusbarExternalIPDisplayed"_s, displayed);
 }
 
+bool Preferences::isStatusbarSelectedTorrentsCountDisplayed() const
+{
+    return value(u"Preferences/General/StatusbarSelectedTorrentsCountDisplayed"_s, false);
+}
+
+void Preferences::setStatusbarSelectedTorrentsCountDisplayed(const bool displayed)
+{
+    if (displayed == isStatusbarSelectedTorrentsCountDisplayed())
+        return;
+
+    setValue(u"Preferences/General/StatusbarSelectedTorrentsCountDisplayed"_s, displayed);
+}
+
 bool Preferences::isSplashScreenDisabled() const
 {
     return value(u"Preferences/General/NoSplashScreen"_s, true);

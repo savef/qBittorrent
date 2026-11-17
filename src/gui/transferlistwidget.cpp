@@ -316,6 +316,11 @@ void TransferListWidget::torrentDoubleClicked()
     }
 }
 
+qsizetype TransferListWidget::selectedTorrentsCount() const
+{
+    return selectionModel()->selectedRows().size();
+}
+
 QList<BitTorrent::Torrent *> TransferListWidget::getSelectedTorrents() const
 {
     const QModelIndexList selectedRows = selectionModel()->selectedRows();
@@ -1334,6 +1339,12 @@ void TransferListWidget::displayListMenu()
     listMenu->addAction(actionExportTorrent);
 
     listMenu->popup(QCursor::pos());
+}
+
+void TransferListWidget::selectionChanged(const QItemSelection &selected, const QItemSelection &deselected)
+{
+    QTreeView::selectionChanged(selected, deselected);
+    emit selectedTorrentsChanged();
 }
 
 void TransferListWidget::currentChanged(const QModelIndex &current, const QModelIndex &previous)
