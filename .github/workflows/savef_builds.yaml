@@ -7,6 +7,7 @@
 # (libtorrent 2.0.x only, GUI only on macOS). Keep them in sync with those files when upstream changes them.
 
 name: Savef builds
+run-name: "Build ${{ inputs.ref }}"
 
 on:
   workflow_dispatch:
