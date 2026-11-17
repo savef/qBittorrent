@@ -277,17 +277,15 @@ jobs:
           mkdir upload/qBittorrent/plugins/tls
           copy "${{ env.Qt_ROOT_DIR }}/plugins/tls/qschannelbackend.dll" upload/qBittorrent/plugins/tls
           # portable mode: settings and data stay in this folder instead of %APPDATA% / %LOCALAPPDATA%
-          # (a file is needed because artifact uploads skip empty folders)
           mkdir upload/qBittorrent/profile
-          Set-Content `
-            -Path upload/qBittorrent/profile/README.txt `
-            -Value "This folder enables portable mode: qBittorrent keeps all its settings and data here instead of in AppData. Do not remove it."
+          New-Item -ItemType File -Path upload/qBittorrent/profile/.keep
 
       - name: Upload portable build
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.artifact_name }}_portable
           path: upload
+          include-hidden-files: true
 
       - name: Install NSIS
         uses: repolevedavaj/install-nsis@65a75ea79c3d1ddde868e98b7f9447e2e623401c # v1.3.0
