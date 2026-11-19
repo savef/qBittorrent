@@ -5,6 +5,9 @@
 #
 # The build steps are copied from ci_windows.yaml and ci_macos.yaml with a reduced matrix
 # (libtorrent 2.0.x only, GUI only on macOS). Keep them in sync with those files when upstream changes them.
+#
+# The "Artifact links" job lists every artifact of the run on the Summary page, including those
+# uploaded by earlier attempts, so after "Re-run failed jobs" the latest attempt links to all builds.
 
 name: Savef builds
 run-name: "Build ${{ inputs.ref }}"
@@ -456,3 +459,45 @@ jobs:
         with:
           archive: false
           path: upload/${{ env.artifact_name }}.dmg
+
+  # GitHub only shows the current attempt's uploads under "Artifacts". This job re-runs with
+  # "Re-run failed jobs" (it depends on every build job) and links all artifacts of the run.
+  # Add any new build job to `needs`.
+  artifacts:
+    name: Artifact links
+    needs: [prepare, windows, macos]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+
+    steps:
+      - name: List artifacts of all attempts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # newest unexpired artifact per name, as: id <TAB> name <TAB> size <TAB> created_at
+          artifacts="$(gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/artifacts?per_page=100" \
+            --jq '.artifacts[]' \
+            | jq -rs 'map(select(.expired | not)) | group_by(.name) | map(max_by(.created_at))
+                | sort_by(.name) | .[] | [.id, .name, .size_in_bytes, .created_at] | @tsv')"
+          {
+            echo "### Artifacts"
+            echo ""
+            if [ -z "$artifacts" ]; then
+              echo "No artifacts were uploaded."
+            else
+              echo "All builds of this run, including those from earlier attempts:"
+              echo ""
+              echo "| Artifact | Size | Uploaded (UTC) |"
+              echo "| --- | ---: | --- |"
+              while IFS=$'\t' read -r id name size created; do
+                size_mib="$(awk -v b="$size" 'BEGIN { printf "%.1f MiB", b / 1048576 }')"
+                created="${created%Z}"
+                echo "| [$name]($RUN_URL/artifacts/$id) | $size_mib | ${created/T/ } |"
+              done <<< "$artifacts"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
