@@ -3,8 +3,9 @@
 # Run it from the Actions tab: "Savef builds" -> "Run workflow", enter the branch (or tag/commit) to build
 # and tick the platforms you want. Nothing here runs on push or pull request.
 #
-# The build steps are copied from ci_windows.yaml and ci_macos.yaml with a reduced matrix
-# (libtorrent 2.0.x only, GUI only on macOS). Keep them in sync with those files when upstream changes them.
+# The build steps are copied from ci_windows.yaml, ci_macos.yaml and ci_ubuntu.yaml with a reduced matrix
+# (libtorrent 2.0.x only, GUI only on macOS and Linux, no CodeQL). Keep them in sync with those files when
+# upstream changes them.
 #
 # The "Artifact links" job lists every artifact of the run on the Summary page, including those
 # uploaded by earlier attempts, so after "Re-run failed jobs" the latest attempt links to all builds.
@@ -28,6 +29,10 @@ on:
         description: "macOS app (Apple Silicon)"
         type: boolean
         default: true
+      linux:
+        description: "Linux x64 (AppImage)"
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -58,9 +63,10 @@ jobs:
           INPUT_REF: ${{ inputs.ref }}
           BUILD_WINDOWS: ${{ inputs.windows }}
           BUILD_MACOS: ${{ inputs.macos }}
+          BUILD_LINUX: ${{ inputs.linux }}
         run: |
-          if [ "$BUILD_WINDOWS" != "true" ] && [ "$BUILD_MACOS" != "true" ]; then
-            echo "::error::No platform selected. Tick Windows and/or macOS."
+          if [ "$BUILD_WINDOWS" != "true" ] && [ "$BUILD_MACOS" != "true" ] && [ "$BUILD_LINUX" != "true" ]; then
+            echo "::error::No platform selected. Tick Windows, macOS and/or Linux."
             exit 1
           fi
           sha="$(git rev-parse HEAD)"
@@ -74,6 +80,7 @@ jobs:
             echo ""
             echo "- Windows: $BUILD_WINDOWS"
             echo "- macOS: $BUILD_MACOS"
+            echo "- Linux: $BUILD_LINUX"
           } >> "$GITHUB_STEP_SUMMARY"
 
   windows:
@@ -460,12 +467,169 @@ jobs:
           archive: false
           path: upload/${{ env.artifact_name }}.dmg
 
+  linux:
+    name: Linux (${{ matrix.libtorrent.version }}, ${{ matrix.qbt_gui }})
+    needs: prepare
+    if: ${{ inputs.linux }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        libtorrent:
+          - version: "2.0.15"
+            boost_major_version: "1"
+            boost_minor_version: "77"
+            boost_patch_version: "0"
+            boost_sha256: "5347464af5b14ac54bb945dc68f1dd7c56f0dad7262816b956138fc53bcc0131"
+            libt_build_flags: ""
+        qbt_gui: ["GUI=ON"]
+        qt_version: ["6.6.3"]
+
+    env:
+      artifact_name: "qBittorrent-Linux-x86_64_${{ needs.prepare.outputs.label }}"
+      boost_path: "${{ github.workspace }}/../boost"
+      harden_flags: "-D_FORTIFY_SOURCE=3 -D_GLIBCXX_ASSERTIONS"
+      libtorrent_path: "${{ github.workspace }}/../libtorrent"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install \
+            build-essential cmake ninja-build \
+            libssl-dev zlib1g-dev
+
+      - name: Setup ccache
+        uses: Chocobo1/setup-ccache-action@v1
+        with:
+          store_cache: true
+          update_packager_index: false
+          ccache_options: |
+            max_size=1G
+
+      - name: Install boost
+        run: |
+          boost_url="https://archives.boost.io/release/${{ matrix.libtorrent.boost_major_version }}.${{ matrix.libtorrent.boost_minor_version }}.${{ matrix.libtorrent.boost_patch_version }}/source/boost_${{ matrix.libtorrent.boost_major_version }}_${{ matrix.libtorrent.boost_minor_version }}_${{ matrix.libtorrent.boost_patch_version }}.tar.gz"
+          boost_url2="https://sourceforge.net/projects/boost/files/boost/${{ matrix.libtorrent.boost_major_version }}.${{ matrix.libtorrent.boost_minor_version }}.${{ matrix.libtorrent.boost_patch_version }}/boost_${{ matrix.libtorrent.boost_major_version }}_${{ matrix.libtorrent.boost_minor_version }}_${{ matrix.libtorrent.boost_patch_version }}.tar.gz"
+          boost_checksum="${{ matrix.libtorrent.boost_sha256 }}  ${{ runner.temp }}/boost.tar.gz"
+          set +e
+          curl -L -o "${{ runner.temp }}/boost.tar.gz" "$boost_url"
+          echo "$boost_checksum" | sha256sum -c - && \
+            tar -xf "${{ runner.temp }}/boost.tar.gz" -C "${{ github.workspace }}/.."; _exitCode="$?"
+          if [ "$_exitCode" -ne "0" ]; then
+            curl -L -o "${{ runner.temp }}/boost.tar.gz" "$boost_url2"
+            echo "$boost_checksum" | sha256sum -c - && \
+              tar -xf "${{ runner.temp }}/boost.tar.gz" -C "${{ github.workspace }}/.."; _exitCode="$?"
+          fi
+          if [ "$_exitCode" -ne "0" ]; then
+            exit "$_exitCode"
+          fi
+          mv "${{ github.workspace }}/.."/boost_* "${{ env.boost_path }}"
+          cd "${{ env.boost_path }}"
+          ./bootstrap.sh
+          ./b2 stage --stagedir=./ --with-headers
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ matrix.qt_version }}
+          archives: icu qtbase qtdeclarative qtsvg qttools
+          modules: qtimageformats
+          cache: true
+
+      - name: Install libtorrent
+        run: |
+          git clone \
+            --branch v${{ matrix.libtorrent.version }} \
+            --depth 1 \
+            --recurse-submodules \
+            https://github.com/arvidn/libtorrent.git \
+            ${{ env.libtorrent_path }}
+          cd ${{ env.libtorrent_path }}
+          CFLAGS="$CFLAGS ${{ env.harden_flags }}" \
+          CXXFLAGS="$CXXFLAGS ${{ env.harden_flags }}" \
+          cmake \
+            -B build \
+            -G "Ninja" \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_CXX_STANDARD=20 \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DBOOST_ROOT="${{ env.boost_path }}/lib/cmake" \
+            -Ddeprecated-functions=OFF \
+            ${{ matrix.libtorrent.libt_build_flags }}
+          cmake --build build
+          sudo cmake --install build
+
+      - name: Build qBittorrent
+        run: |
+          CFLAGS="$CFLAGS ${{ env.harden_flags }}" \
+          CXXFLAGS="$CXXFLAGS ${{ env.harden_flags }} -DQT_FORCE_ASSERTS -Werror" \
+          LDFLAGS="$LDFLAGS -gz" \
+          cmake \
+            -B build \
+            -G "Ninja" \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DBOOST_ROOT="${{ env.boost_path }}/lib/cmake" \
+            -DCMAKE_INSTALL_PREFIX="/usr" \
+            -DTESTING=ON \
+            -DVERBOSE_CONFIGURE=ON \
+            -D${{ matrix.qbt_gui }}
+          cmake --build build --target qbt_update_translations
+          cmake --build build
+          cmake --build build --target check
+          QT_QPA_PLATFORM=offscreen build/qbittorrent -v
+          DESTDIR="qbittorrent" cmake --install build
+
+      - name: Install AppImage
+        run: |
+          curl \
+            -L \
+            -Z \
+            -O https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage \
+            -O https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage \
+            -O https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage
+          chmod +x \
+            linuxdeploy-x86_64.AppImage \
+            linuxdeploy-plugin-qt-x86_64.AppImage \
+            linuxdeploy-plugin-appimage-x86_64.AppImage
+
+      - name: Package AppImage
+        run: |
+          rm -f \
+            "$QT_PLUGIN_PATH/sqldrivers/libqsqlmimer.so" \
+            "$QT_PLUGIN_PATH/sqldrivers/libqsqlmysql.so"
+          ./linuxdeploy-x86_64.AppImage --appdir qbittorrent --plugin qt
+          mkdir -p qbittorrent/apprun-hooks
+          rm -f qbittorrent/apprun-hooks/*
+          cp .github/workflows/helper/appimage/export_vars.sh qbittorrent/apprun-hooks/export_vars.sh
+          mkdir upload
+          NO_APPSTREAM=1 \
+            OUTPUT="upload/${{ env.artifact_name }}.AppImage" \
+            ./linuxdeploy-x86_64.AppImage --appdir qbittorrent --output appimage
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          archive: false
+          path: upload/${{ env.artifact_name }}.AppImage
+
   # GitHub only shows the current attempt's uploads under "Artifacts". This job re-runs with
   # "Re-run failed jobs" (it depends on every build job) and links all artifacts of the run.
   # Add any new build job to `needs`.
   artifacts:
     name: Artifact links
-    needs: [prepare, windows, macos]
+    needs: [prepare, windows, macos, linux]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     permissions:
