@@ -339,9 +339,20 @@ div.toolbox.divider {
     width: 16px;
 }
 
+#desktopFooter > table,
+#desktopFooter > table > tbody {
+    display: block;
+}
+
+#desktopFooter tr {
+    display: flex;
+    gap: 2px; /* keep the default table cell spacing */
+    padding: 2px;
+}
+
 #desktopFooter td {
+    flex-shrink: 0;
     text-align: left;
-    vertical-align: top;
 }
 
 td.speedLabel {
@@ -349,10 +360,9 @@ td.speedLabel {
     min-width: 18em;
 }
 
-#freeSpaceOnDisk {
-    white-space: nowrap;
-}
-
-#DHTNodes {
+#desktopFooter td.statusBarText {
+    flex-shrink: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
 }
