@@ -1393,8 +1393,8 @@ window.addEventListener("DOMContentLoaded", async (event) => {
             });
     });
 
-    document.getElementById("DlInfos").addEventListener("click", (event) => { globalLimitFN(); });
-    document.getElementById("UpInfos").addEventListener("click", (event) => { globalLimitFN(); });
+    document.getElementById("DlInfos").parentElement.addEventListener("click", (event) => { globalLimitFN(); });
+    document.getElementById("UpInfos").parentElement.addEventListener("click", (event) => { globalLimitFN(); });
 
     document.getElementById("showTopToolbarLink").addEventListener("click", (e) => {
         showTopToolbar = !showTopToolbar;
