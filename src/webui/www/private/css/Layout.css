@@ -367,3 +367,30 @@ td.speedLabel {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* in narrow windows, also shorten the speeds, after the other items */
+@media (width < 768px) {
+    #desktopFooter td.statusBarText {
+        flex-shrink: 1000;
+    }
+
+    #desktopFooter td.speedLabel {
+        flex-shrink: 1;
+        min-width: calc(1.5em + 2px); /* the icon and the cell padding */
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        width: 18em;
+    }
+}
+
+/* in very narrow windows, also narrow the spacing */
+@media (width < 480px) {
+    #desktopFooter tr {
+        gap: 0;
+    }
+
+    #desktopFooter td.statusBarSeparator {
+        width: 8px;
+    }
+}
