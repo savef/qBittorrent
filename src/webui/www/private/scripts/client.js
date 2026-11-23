@@ -1247,12 +1247,16 @@ window.addEventListener("DOMContentLoaded", async (event) => {
         if (serverState.dl_rate_limit > 0)
             transfer_info += ` [${window.qBittorrent.Misc.friendlyUnit(serverState.dl_rate_limit, true)}]`;
         transfer_info += ` (${window.qBittorrent.Misc.friendlyUnit(serverState.dl_info_data, false)})`;
-        document.getElementById("DlInfos").textContent = transfer_info;
+        const dlInfosElement = document.getElementById("DlInfos");
+        dlInfosElement.textContent = transfer_info;
+        dlInfosElement.parentElement.title = transfer_info;
         transfer_info = window.qBittorrent.Misc.friendlyUnit(serverState.up_info_speed, true);
         if (serverState.up_rate_limit > 0)
             transfer_info += ` [${window.qBittorrent.Misc.friendlyUnit(serverState.up_rate_limit, true)}]`;
         transfer_info += ` (${window.qBittorrent.Misc.friendlyUnit(serverState.up_info_data, false)})`;
-        document.getElementById("UpInfos").textContent = transfer_info;
+        const upInfosElement = document.getElementById("UpInfos");
+        upInfosElement.textContent = transfer_info;
+        upInfosElement.parentElement.title = transfer_info;
 
         let titlePrefix = "";
         if (serverState.session_state) {
@@ -1266,7 +1270,9 @@ window.addEventListener("DOMContentLoaded", async (event) => {
 
         document.title = titlePrefix + window.qBittorrent.Client.mainTitle();
 
-        document.getElementById("freeSpaceOnDisk").textContent = "QBT_TR(Free space: %1)QBT_TR[CONTEXT=HttpServer]".replace("%1", window.qBittorrent.Misc.friendlyUnit(serverState.free_space_on_disk));
+        const freeSpaceElement = document.getElementById("freeSpaceOnDisk");
+        freeSpaceElement.textContent = "QBT_TR(Free space: %1)QBT_TR[CONTEXT=HttpServer]".replace("%1", window.qBittorrent.Misc.friendlyUnit(serverState.free_space_on_disk));
+        freeSpaceElement.title = freeSpaceElement.textContent;
 
         const externalIPsElement = document.getElementById("externalIPs");
         if (window.qBittorrent.Cache.preferences.get().status_bar_external_ip) {
@@ -1282,6 +1288,7 @@ window.addEventListener("DOMContentLoaded", async (event) => {
             // https://en.wikipedia.org/wiki/IPv6_address#Scoped_literal_IPv6_addresses_(with_zone_index)
             lastExternalAddressLabel = lastExternalAddressLabel.replace("%1", lastExternalAddressV4).replace("%2", lastExternalAddressV6);
             externalIPsElement.textContent = lastExternalAddressLabel;
+            externalIPsElement.title = lastExternalAddressLabel;
             externalIPsElement.classList.remove("invisible");
             externalIPsElement.previousElementSibling.classList.remove("invisible");
         }
@@ -1293,6 +1300,7 @@ window.addEventListener("DOMContentLoaded", async (event) => {
         const dhtElement = document.getElementById("DHTNodes");
         if (window.qBittorrent.Cache.preferences.get().dht) {
             dhtElement.textContent = "QBT_TR(DHT: %1 nodes)QBT_TR[CONTEXT=StatusBar]".replace("%1", serverState.dht_nodes);
+            dhtElement.title = dhtElement.textContent;
             dhtElement.classList.remove("invisible");
             dhtElement.previousElementSibling.classList.remove("invisible");
         }

@@ -362,6 +362,7 @@ td.speedLabel {
 
 #desktopFooter td.statusBarText {
     flex-shrink: 1;
+    min-width: 1em; /* leave an ellipsis to hover over */
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
