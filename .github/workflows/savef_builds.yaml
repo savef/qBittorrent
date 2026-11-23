@@ -4,7 +4,8 @@
 # and tick the platforms you want. Nothing here runs on push or pull request.
 #
 # The build steps are copied from ci_windows.yaml, ci_macos.yaml and ci_ubuntu.yaml with a reduced matrix
-# (libtorrent 2.0.x, plus an optional libtorrent 1.2.x build on Windows, GUI only on macOS and Linux, no CodeQL).
+# (libtorrent 2.0.x, plus an optional libtorrent 1.2.x build on Windows, GUI only on macOS, GUI and/or nox on Linux,
+# no CodeQL).
 # Keep them in sync with those files when upstream changes them.
 #
 # The "Artifact links" job lists every artifact of the run on the Summary page, including those
@@ -37,6 +38,10 @@ on:
         description: "Linux x64 (AppImage)"
         type: boolean
         default: false
+      linux_nox:
+        description: "Linux x64, qbittorrent-nox (AppImage)"
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -52,6 +57,7 @@ jobs:
       sha: ${{ steps.info.outputs.sha }}
       label: ${{ steps.info.outputs.label }}
       windows_libtorrent: ${{ steps.windows.outputs.libtorrent }}
+      linux_qbt_gui: ${{ steps.linux.outputs.qbt_gui }}
     permissions:
       contents: read
 
@@ -70,8 +76,9 @@ jobs:
           BUILD_WINDOWS_LT12: ${{ inputs.windows_lt12 }}
           BUILD_MACOS: ${{ inputs.macos }}
           BUILD_LINUX: ${{ inputs.linux }}
+          BUILD_LINUX_NOX: ${{ inputs.linux_nox }}
         run: |
-          if [ "$BUILD_WINDOWS" != "true" ] && [ "$BUILD_WINDOWS_LT12" != "true" ] && [ "$BUILD_MACOS" != "true" ] && [ "$BUILD_LINUX" != "true" ]; then
+          if [ "$BUILD_WINDOWS" != "true" ] && [ "$BUILD_WINDOWS_LT12" != "true" ] && [ "$BUILD_MACOS" != "true" ] && [ "$BUILD_LINUX" != "true" ] && [ "$BUILD_LINUX_NOX" != "true" ]; then
             echo "::error::No platform selected. Tick Windows, macOS and/or Linux."
             exit 1
           fi
@@ -88,6 +95,7 @@ jobs:
             echo "- Windows, libtorrent 1.2: $BUILD_WINDOWS_LT12"
             echo "- macOS: $BUILD_MACOS"
             echo "- Linux: $BUILD_LINUX"
+            echo "- Linux, qbittorrent-nox: $BUILD_LINUX_NOX"
           } >> "$GITHUB_STEP_SUMMARY"
 
       # The Windows job builds one portable app per ticked libtorrent version
@@ -105,6 +113,22 @@ jobs:
             configs+=('{"version": "1.2.20", "boost_major_version": "1", "boost_minor_version": "86", "boost_patch_version": "0", "boost_sha256": "2575e74ffc3ef1cd0babac2c1ee8bdb5782a0ee672b1912da40e5b4b591ca01f", "libt_build_flags": "", "artifact_suffix": "-libtorrent-1.2.20"}')
           fi
           echo "libtorrent=[$(IFS=,; echo "${configs[*]}")]" >> "$GITHUB_OUTPUT"
+
+      # The Linux job builds one AppImage per ticked variant (GUI and/or nox)
+      - name: Select Linux variants
+        id: linux
+        env:
+          BUILD_LINUX: ${{ inputs.linux }}
+          BUILD_LINUX_NOX: ${{ inputs.linux_nox }}
+        run: |
+          configs=()
+          if [ "$BUILD_LINUX" = "true" ]; then
+            configs+=('"GUI=ON"')
+          fi
+          if [ "$BUILD_LINUX_NOX" = "true" ]; then
+            configs+=('"GUI=OFF"')
+          fi
+          echo "qbt_gui=[$(IFS=,; echo "${configs[*]}")]" >> "$GITHUB_OUTPUT"
 
   windows:
     name: Windows (${{ matrix.libtorrent.version }}, ${{ matrix.config.arch }})
@@ -487,7 +511,7 @@ jobs:
   linux:
     name: Linux (${{ matrix.libtorrent.version }}, ${{ matrix.qbt_gui }})
     needs: prepare
-    if: ${{ inputs.linux }}
+    if: ${{ inputs.linux || inputs.linux_nox }}
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -502,11 +526,11 @@ jobs:
             boost_patch_version: "0"
             boost_sha256: "5347464af5b14ac54bb945dc68f1dd7c56f0dad7262816b956138fc53bcc0131"
             libt_build_flags: ""
-        qbt_gui: ["GUI=ON"]
+        qbt_gui: ${{ fromJSON(needs.prepare.outputs.linux_qbt_gui) }}
         qt_version: ["6.6.3"]
 
     env:
-      artifact_name: "qBittorrent-Linux-x86_64_${{ needs.prepare.outputs.label }}"
+      artifact_name: "${{ (matrix.qbt_gui == 'GUI=OFF') && 'qbittorrent-nox' || 'qBittorrent' }}-Linux-x86_64_${{ needs.prepare.outputs.label }}"
       boost_path: "${{ github.workspace }}/../boost"
       harden_flags: "-D_FORTIFY_SOURCE=3 -D_GLIBCXX_ASSERTIONS"
       libtorrent_path: "${{ github.workspace }}/../libtorrent"
@@ -605,7 +629,11 @@ jobs:
           cmake --build build --target qbt_update_translations
           cmake --build build
           cmake --build build --target check
-          QT_QPA_PLATFORM=offscreen build/qbittorrent -v
+          if [ "${{ matrix.qbt_gui }}" = "GUI=ON" ]; then
+            QT_QPA_PLATFORM=offscreen build/qbittorrent -v
+          else
+            build/qbittorrent-nox -v
+          fi
           DESTDIR="qbittorrent" cmake --install build
 
       - name: Install AppImage
@@ -620,6 +648,14 @@ jobs:
             linuxdeploy-x86_64.AppImage \
             linuxdeploy-plugin-qt-x86_64.AppImage \
             linuxdeploy-plugin-appimage-x86_64.AppImage
+
+      - name: Prepare files for AppImage
+        if: matrix.qbt_gui == 'GUI=OFF'
+        run: |
+          mkdir -p qbittorrent/usr/share/applications
+          cp .github/workflows/helper/appimage/org.qbittorrent.qBittorrent.desktop qbittorrent/usr/share/applications/org.qbittorrent.qBittorrent.desktop
+          mkdir -p qbittorrent/usr/share/icons/hicolor/scalable/apps
+          cp dist/unix/menuicons/scalable/apps/qbittorrent.svg qbittorrent/usr/share/icons/hicolor/scalable/apps/qbittorrent.svg
 
       - name: Package AppImage
         run: |
