@@ -1030,9 +1030,6 @@ window.addEventListener("DOMContentLoaded", async (event) => {
 
                         const responseJSON = await response.json();
 
-                        clearTimeout(torrentsFilterInputTimer);
-                        torrentsFilterInputTimer = -1;
-
                         let torrentsTableSelectedRows;
                         let updateStatuses = false;
                         let updateCategories = false;
@@ -1178,8 +1175,13 @@ window.addEventListener("DOMContentLoaded", async (event) => {
                         }
 
                         // don't update the table unnecessarily
-                        if (updateTorrents)
+                        if (updateTorrents) {
+                            // the pending filter input is applied by this update
+                            clearTimeout(torrentsFilterInputTimer);
+                            torrentsFilterInputTimer = -1;
+
                             torrentsTable.updateTable(fullUpdate);
+                        }
 
                         if (responseJSON["server_state"]) {
                             const tmp = responseJSON["server_state"];
