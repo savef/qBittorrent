@@ -4,8 +4,8 @@
 # and tick the platforms you want. Nothing here runs on push or pull request.
 #
 # The build steps are copied from ci_windows.yaml, ci_macos.yaml and ci_ubuntu.yaml with a reduced matrix
-# (libtorrent 2.0.x only, GUI only on macOS and Linux, no CodeQL). Keep them in sync with those files when
-# upstream changes them.
+# (libtorrent 2.0.x, plus an optional libtorrent 1.2.x build on Windows, GUI only on macOS and Linux, no CodeQL).
+# Keep them in sync with those files when upstream changes them.
 #
 # The "Artifact links" job lists every artifact of the run on the Summary page, including those
 # uploaded by earlier attempts, so after "Re-run failed jobs" the latest attempt links to all builds.
@@ -25,6 +25,10 @@ on:
         description: "Windows x64 (portable)"
         type: boolean
         default: true
+      windows_lt12:
+        description: "Windows x64, libtorrent 1.2 (portable)"
+        type: boolean
+        default: false
       macos:
         description: "macOS app (Apple Silicon)"
         type: boolean
@@ -47,6 +51,7 @@ jobs:
     outputs:
       sha: ${{ steps.info.outputs.sha }}
       label: ${{ steps.info.outputs.label }}
+      windows_libtorrent: ${{ steps.windows.outputs.libtorrent }}
     permissions:
       contents: read
 
@@ -62,10 +67,11 @@ jobs:
         env:
           INPUT_REF: ${{ inputs.ref }}
           BUILD_WINDOWS: ${{ inputs.windows }}
+          BUILD_WINDOWS_LT12: ${{ inputs.windows_lt12 }}
           BUILD_MACOS: ${{ inputs.macos }}
           BUILD_LINUX: ${{ inputs.linux }}
         run: |
-          if [ "$BUILD_WINDOWS" != "true" ] && [ "$BUILD_MACOS" != "true" ] && [ "$BUILD_LINUX" != "true" ]; then
+          if [ "$BUILD_WINDOWS" != "true" ] && [ "$BUILD_WINDOWS_LT12" != "true" ] && [ "$BUILD_MACOS" != "true" ] && [ "$BUILD_LINUX" != "true" ]; then
             echo "::error::No platform selected. Tick Windows, macOS and/or Linux."
             exit 1
           fi
@@ -79,14 +85,31 @@ jobs:
             echo "### Building \`$INPUT_REF\` at \`$short\`"
             echo ""
             echo "- Windows: $BUILD_WINDOWS"
+            echo "- Windows, libtorrent 1.2: $BUILD_WINDOWS_LT12"
             echo "- macOS: $BUILD_MACOS"
             echo "- Linux: $BUILD_LINUX"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # The Windows job builds one portable app per ticked libtorrent version
+      - name: Select Windows libtorrent versions
+        id: windows
+        env:
+          BUILD_WINDOWS: ${{ inputs.windows }}
+          BUILD_WINDOWS_LT12: ${{ inputs.windows_lt12 }}
+        run: |
+          configs=()
+          if [ "$BUILD_WINDOWS" = "true" ]; then
+            configs+=('{"version": "2.0.15", "boost_major_version": "1", "boost_minor_version": "91", "boost_patch_version": "0", "boost_sha256": "5734305f40a76c30f951c9abd409a45a2a19fb546efe4162119250bbe4d3a463", "libt_build_flags": "", "artifact_suffix": ""}')
+          fi
+          if [ "$BUILD_WINDOWS_LT12" = "true" ]; then
+            configs+=('{"version": "1.2.20", "boost_major_version": "1", "boost_minor_version": "86", "boost_patch_version": "0", "boost_sha256": "2575e74ffc3ef1cd0babac2c1ee8bdb5782a0ee672b1912da40e5b4b591ca01f", "libt_build_flags": "", "artifact_suffix": "-libtorrent-1.2.20"}')
+          fi
+          echo "libtorrent=[$(IFS=,; echo "${configs[*]}")]" >> "$GITHUB_OUTPUT"
+
   windows:
     name: Windows (${{ matrix.libtorrent.version }}, ${{ matrix.config.arch }})
     needs: prepare
-    if: ${{ inputs.windows }}
+    if: ${{ inputs.windows || inputs.windows_lt12 }}
     runs-on: ${{ matrix.config.os }}
     permissions:
       actions: write
@@ -94,20 +117,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        libtorrent:
-          - version: "2.0.15"
-            boost_major_version: "1"
-            boost_minor_version: "91"
-            boost_patch_version: "0"
-            boost_sha256: "5734305f40a76c30f951c9abd409a45a2a19fb546efe4162119250bbe4d3a463"
-            libt_build_flags: ""
+        libtorrent: ${{ fromJSON(needs.prepare.outputs.windows_libtorrent) }}
         config:
         - os: windows-latest
           arch: x64
           qt_arch: win64_msvc2022_64
 
     env:
-      artifact_name: "qBittorrent-Windows-${{ matrix.config.arch }}_${{ needs.prepare.outputs.label }}"
+      artifact_name: "qBittorrent-Windows-${{ matrix.config.arch }}${{ matrix.libtorrent.artifact_suffix }}_${{ needs.prepare.outputs.label }}"
       boost_path: "${{ github.workspace }}/../boost"
       libtorrent_path: "${{ github.workspace }}/../libtorrent"
       vcpkg_path: "c:/vcpkg"
